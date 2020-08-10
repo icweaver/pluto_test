@@ -4,6 +4,20 @@
 using Markdown
 using InteractiveUtils
 
+# ╔═╡ c9ac27ee-dac0-11ea-2a8c-2d144b034a82
+md"""
+# Exoplanet Calculator 🪐
+"""
+
+# ╔═╡ b2286b26-dac2-11ea-1ce0-c7da562aa641
+md"Given exoplanet and host star parameters from the literature, calculate derived values relevant for detection of the planet's atmosphere"
+
+# ╔═╡ 19b35ef4-dac3-11ea-2d25-97e5482ff6a0
+md"### Literature values"
+
+# ╔═╡ 0b6821a4-dac3-11ea-27d7-911521f0d3c0
+md"### Calculate all the things"
+
 # ╔═╡ 02bfa078-d62b-11ea-15df-d701431829b9
 begin
 	using Measurements, Unitful, UnitfulAstro, Markdown
@@ -14,19 +28,6 @@ end;
 # ╔═╡ 17302d74-d63b-11ea-3de3-49f0df0554ca
 # Input params from study
 studies = [
-	(
-		name = "Yea",
-		μ    = 2.0*amu,
-		α    = 0.0,
-		K    = (346.0 ± 21)u"m/s", # newest RV data, from B17
-		i    = (85.1 ± 1.5)u"°",  # newest RV data, from B17
-		P    = (1.2128867 ± 0.0000002)u"d", # newest transit data, from S&R16 
-		Mₚ   = (1.34 ± 0.59)u"Mjup",
-		RₚRₛ = 0.1113 ± 0.0010,
-		aRₛ  = 4.26 ± 0.26,
-		Tₛ   = (5734 ± 99.8735)u"K",
-		Rₛ   = (1.1858169 ± 0.0424133)u"Rsun",
-	),
 	(
 		name = "Ciceri et al. (2015)",
 		μ    = 2.0*amu,
@@ -43,10 +44,23 @@ studies = [
 		name = "GAIA DR2",
 		μ    = 2.0*amu,
 		α    = 0.0,
-		K    = (346.0 ± 21)u"m/s", # newest RV data, from B17
-		i    = (85.1 ± 1.5)u"°",  # newest RV data, from B17
-		P    = (1.2128867 ± 0.0000002)u"d", # newest transit data, from S&R16
-		RₚRₛ = 0.1113 ± 0.0010, # newest transit data, from S&R16
+		K    = (346.0 ± 21)u"m/s", # latest RV data, from B17
+		i    = (85.1 ± 1.5)u"°",  # latest RV data, from B17
+		P    = (1.2128867 ± 0.0000002)u"d", # latest transit data: (S&R16)
+		RₚRₛ = 0.1113 ± 0.0010, # latest transit data: (S&R16)
+		aRₛ  = 4.16 ± 0.26,
+		Tₛ   = (5734 ± 99.8735)u"K",
+		Rₛ   = (1.1858169 ± 0.0424133)u"Rsun",
+	),
+	(
+		name = "GAIA DR2 w/ DR1 mass",
+		μ    = 2.0*amu,
+		α    = 0.0,
+		K    = (346.0 ± 21)u"m/s", # latest RV data, from B17
+		i    = (85.1 ± 1.5)u"°",  # latest RV data, from B17
+		P    = (1.2128867 ± 0.0000002)u"d", # latest transit data: (S&R16)
+		Mₚ   = (1.34 ± 0.59)u"Mjup",
+		RₚRₛ = 0.1113 ± 0.0010, # latest transit data: (S&R16)
 		aRₛ  = 4.16 ± 0.26,
 		Tₛ   = (5734 ± 99.8735)u"K",
 		Rₛ   = (1.1858169 ± 0.0424133)u"Rsun",
@@ -54,45 +68,51 @@ studies = [
 ];
 
 # ╔═╡ 3f79c516-da77-11ea-1f6b-d3e7191a95d8
-get_ρₛ(; P, aRₛ) = (3.0π / (G * P^2)) * aRₛ^3.0
+begin
+	# Star density
+	get_ρₛ(; P, aRₛ) = (3.0π / (G * P^2)) * aRₛ^3.0
 
-# ╔═╡ f5b9abe4-da76-11ea-1e42-25ade960ed52
-get_Mₛ(; ρₛ, Rₛ) = ρₛ * (4.0/3.0) * π * Rₛ^3.0
+	# Star mass
+	get_Mₛ(; ρₛ, Rₛ) = ρₛ * (4.0/3.0) * π * Rₛ^3.0
 
-# ╔═╡ 480ed8b0-da72-11ea-18b0-07879c66ecfc
-get_Mₚ(; K, i, P, Mₛ) = (K/sin(i)) * (P / (2.0π*G))^(1//3) * Mₛ^(2//3)
+	#Planet mass
+	get_Mₚ(; K, i, P, Mₛ) = (K/sin(i)) * (P / (2.0π*G))^(1//3) * Mₛ^(2//3)
 
-# ╔═╡ 2fa77fc8-da80-11ea-193f-911962ef9892
-get_gₛ(; Mₛ, Rₛ) = G * Mₛ / Rₛ^2
+	# Star surface gravity
+	get_gₛ(; Mₛ, Rₛ) = G * Mₛ / Rₛ^2
 
-# ╔═╡ ba7e96ce-d630-11ea-350d-cb961d23b482
-get_g(; Mₚ, RₚRₛ, Rₛ) = G * Mₚ / (RₚRₛ^2 * Rₛ^2)
+	# Planet surface gravity
+	get_g(; Mₚ, RₚRₛ, Rₛ) = G * Mₚ / (RₚRₛ^2 * Rₛ^2)
 
-# ╔═╡ 3f1ef4fe-d62b-11ea-3694-7bfea6c78d25
-get_Tₚ(; Tₛ, aRₛ, α) = Tₛ * (1.0 - α)^(1//4) * (0.5/aRₛ)^(1//2)
+	# Planet equilibrium temperature
+	get_Tₚ(; Tₛ, aRₛ, α) = Tₛ * (1.0 - α)^(1//4) * (0.5/aRₛ)^(1//2)
 
-# ╔═╡ 673a3e64-d635-11ea-2668-713470482653
-get_H(; μ, Tₚ, g) = k * Tₚ / (μ * g)
+	# Planet scale height
+	get_H(; μ, Tₚ, g) = k * Tₚ / (μ * g)
 
-# ╔═╡ 363e5c42-d639-11ea-24a5-31e2094480b9
-get_Delta_D(; H, RₚRₛ, Rₛ) = 2.0 * H * RₚRₛ/Rₛ
+	# Estimated signal from planet atmosphere
+	get_Delta_D(; H, RₚRₛ, Rₛ) = 2.0 * H * RₚRₛ/Rₛ
+end;
 
 # ╔═╡ 3833772c-d63f-11ea-09b5-f36d68e512ea
 begin
 	results = []
-	for p in studies
-		# Derived params
-		ρₛ = (haskey(p, :ρₛ)) ? p.ρₛ : get_ρₛ(P=p.P, aRₛ=p.aRₛ)
-		Mₛ = (haskey(p, :Mₛ)) ? p.Mₛ : get_Mₛ(ρₛ=ρₛ, Rₛ=p.Rₛ)
-		Mₚ = (haskey(p, :Mₚ)) ? p.Mₚ : get_Mₚ(K=p.K, i=p.i, P=p.P, Mₛ=Mₛ)
-		gₛ = get_gₛ(Mₛ=Mₛ, Rₛ=p.Rₛ)
-		g  = get_g(Mₚ=Mₚ, RₚRₛ=p.RₚRₛ, Rₛ=p.Rₛ)
-		Tₚ = get_Tₚ(Tₛ=p.Tₛ, aRₛ=p.aRₛ, α=p.α)
-		H  = get_H(μ=p.μ, Tₚ=Tₚ, g=g)
-		ΔD = get_Delta_D(H=H, RₚRₛ=p.RₚRₛ, Rₛ=p.Rₛ)
+	for st in studies
+		# Calculate secondary params if not given
+		ρₛ = (haskey(st, :ρₛ)) ? st.ρₛ : get_ρₛ(P=st.P, aRₛ=st.aRₛ)
+		Mₛ = (haskey(st, :Mₛ)) ? st.Mₛ : get_Mₛ(ρₛ=ρₛ, Rₛ=st.Rₛ)
+		Mₚ = (haskey(st, :Mₚ)) ? st.Mₚ : get_Mₚ(K=st.K, i=st.i, P=st.P, Mₛ=Mₛ)
+		
+		# Calculate remaining params
+		gₛ = get_gₛ(Mₛ=Mₛ, Rₛ=st.Rₛ)
+		g  = get_g(Mₚ=Mₚ, RₚRₛ=st.RₚRₛ, Rₛ=st.Rₛ)
+		Tₚ = get_Tₚ(Tₛ=st.Tₛ, aRₛ=st.aRₛ, α=st.α)
+		H  = get_H(μ=st.μ, Tₚ=Tₚ, g=g)
+		ΔD = get_Delta_D(H=H, RₚRₛ=st.RₚRₛ, Rₛ=st.Rₛ)
 
+		# Collect results
 		m = md"""
-		**Derived results for $(p.name)**:
+		**$(st.name):**
 
 		log gₛ (cm/s²) = $(log10(ustrip(uconvert(u"cm/s^2", gₛ))))
 
@@ -107,26 +127,21 @@ begin
 		H = $(uconvert(u"km", H))
 
 		ΔD = $(5 * upreferred(ΔD) * 1e6) ppm
-
+		
 		"""
-
 		push!(results, m)
 	end
+	
+	# Display results
+	results
 end
 
-# ╔═╡ 91767e6c-da98-11ea-3722-eff13b07d0d7
-results
-
 # ╔═╡ Cell order:
+# ╟─c9ac27ee-dac0-11ea-2a8c-2d144b034a82
+# ╟─b2286b26-dac2-11ea-1ce0-c7da562aa641
+# ╟─19b35ef4-dac3-11ea-2d25-97e5482ff6a0
 # ╠═17302d74-d63b-11ea-3de3-49f0df0554ca
-# ╠═3833772c-d63f-11ea-09b5-f36d68e512ea
-# ╠═91767e6c-da98-11ea-3722-eff13b07d0d7
-# ╠═3f79c516-da77-11ea-1f6b-d3e7191a95d8
-# ╠═f5b9abe4-da76-11ea-1e42-25ade960ed52
-# ╠═480ed8b0-da72-11ea-18b0-07879c66ecfc
-# ╠═2fa77fc8-da80-11ea-193f-911962ef9892
-# ╠═ba7e96ce-d630-11ea-350d-cb961d23b482
-# ╠═3f1ef4fe-d62b-11ea-3694-7bfea6c78d25
-# ╠═673a3e64-d635-11ea-2668-713470482653
-# ╠═363e5c42-d639-11ea-24a5-31e2094480b9
-# ╠═02bfa078-d62b-11ea-15df-d701431829b9
+# ╟─0b6821a4-dac3-11ea-27d7-911521f0d3c0
+# ╟─3833772c-d63f-11ea-09b5-f36d68e512ea
+# ╟─3f79c516-da77-11ea-1f6b-d3e7191a95d8
+# ╟─02bfa078-d62b-11ea-15df-d701431829b9
