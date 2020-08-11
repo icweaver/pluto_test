@@ -55,6 +55,41 @@ begin
 	get_Delta_D(; H, RₚRₛ, Rₛ) = 2.0 * H * RₚRₛ/Rₛ
 end;
 
+# ╔═╡ ffc88100-dbd4-11ea-2f71-39b10a4e5798
+@with_kw_noshow struct Derived @deftype Union{Nothing, Quantity}
+	name::String = "Custom"
+	gₛ = nothing
+	gₚ = nothing
+	ρₛ = nothing
+	Mₛ = nothing
+	Mₚ = nothing
+	Tₚ = nothing
+	H  = nothing
+	ΔD = nothing
+end;
+
+# ╔═╡ 33fc58d0-dbd9-11ea-3c45-83f4b5a2a818
+function print_results(d::Derived)
+	md"""**$(d.name):**
+
+	log gₛ (cm/s²) = $(log10(ustrip(uconvert(u"cm/s^2", d.gₛ))))
+
+	log gₚ (cm/s²) = $(log10(ustrip(uconvert(u"cm/s^2", d.gₚ))))
+
+	ρₛ = $(uconvert(u"g/cm^3", d.ρₛ))
+
+	Mₛ = $(uconvert(u"Msun", d.Mₛ))
+
+	Mₚ = $(uconvert(u"Mjup", d.Mₚ))
+
+	Tₚ = $(uconvert(u"K", d.Tₚ))
+
+	H = $(uconvert(u"km", d.H))
+
+	ΔD = $(5 * upreferred(d.ΔD) * 1e6) ppm
+	"""
+end;
+
 # ╔═╡ db28dbd2-db12-11ea-28e4-2b6cf30bd102
 @with_kw_noshow struct Study @deftype Union{Nothing, Quantity}
 	# Reference name (i.e. Ciceri et al. 2015)
@@ -128,45 +163,36 @@ studies = [
 begin
 	results = []
 	for st in studies
-		# Calculate secondary params if not given
+		# Calculate primary params if not given
 		ρₛ = (isnothing(st.ρₛ)) ? get_ρₛ(P=st.P, aRₛ=st.aRₛ) : st.ρₛ
 		Mₛ = (isnothing(st.Mₛ)) ? get_Mₛ(ρₛ=ρₛ, Rₛ=st.Rₛ) : st.Mₛ
 		Mₚ = (isnothing(st.Mₚ)) ? get_Mₚ(K=st.K, i=st.i, P=st.P, Mₛ=Mₛ) : st.Mₚ
 		
 		# Calculate remaining params
 		gₛ = get_gₛ(Mₛ=Mₛ, Rₛ=st.Rₛ)
-		gₚ  = get_gₚ(Mₚ=Mₚ, RₚRₛ=st.RₚRₛ, Rₛ=st.Rₛ)
+		gₚ = get_gₚ(Mₚ=Mₚ, RₚRₛ=st.RₚRₛ, Rₛ=st.Rₛ)
 		Tₚ = get_Tₚ(Tₛ=st.Tₛ, aRₛ=st.aRₛ, α=st.α)
 		H  = get_H(μ=st.μ, Tₚ=Tₚ, gₚ=gₚ)
 		ΔD = get_Delta_D(H=H, RₚRₛ=st.RₚRₛ, Rₛ=st.Rₛ)
-
-		# Collect results
-		m = md"""
-		**$(st.name):**
-
-		log gₛ (cm/s²) = $(log10(ustrip(uconvert(u"cm/s^2", gₛ))))
 		
-		log gₚ (cm/s²) = $(log10(ustrip(uconvert(u"cm/s^2", gₚ))))
-
-		ρₛ = $(uconvert(u"g/cm^3", ρₛ))
-
-		Mₛ = $(uconvert(u"Msun", Mₛ))
-
-		Mₚ = $(uconvert(u"Mjup", Mₚ))
-
-		Tₚ = $Tₚ
-
-		H = $(uconvert(u"km", H))
-
-		ΔD = $(5 * upreferred(ΔD) * 1e6) ppm
-		
-		"""
-		push!(results, m)
+		# Store results
+		derived = Derived(
+			name = st.name,
+			gₛ = gₛ,
+			gₚ = gₚ,
+			ρₛ = ρₛ,
+			Mₛ = Mₛ,
+			Mₚ = Mₚ,
+			Tₚ = Tₚ,
+			H  = H,
+			ΔD = ΔD,
+		)
+		push!(results, derived)
 	end
-	
-	# Display results
-	results
 end
+
+# ╔═╡ 4bfaf322-dbd9-11ea-0449-87d9aa07311f
+print_results.(results)
 
 # ╔═╡ Cell order:
 # ╟─c9ac27ee-dac0-11ea-2a8c-2d144b034a82
@@ -175,7 +201,10 @@ end
 # ╟─75d6dcbe-db0a-11ea-2839-9542a238b679
 # ╠═17302d74-d63b-11ea-3de3-49f0df0554ca
 # ╟─0b6821a4-dac3-11ea-27d7-911521f0d3c0
-# ╟─3833772c-d63f-11ea-09b5-f36d68e512ea
+# ╟─4bfaf322-dbd9-11ea-0449-87d9aa07311f
+# ╠═3833772c-d63f-11ea-09b5-f36d68e512ea
 # ╟─3f79c516-da77-11ea-1f6b-d3e7191a95d8
+# ╟─33fc58d0-dbd9-11ea-3c45-83f4b5a2a818
+# ╟─ffc88100-dbd4-11ea-2f71-39b10a4e5798
 # ╟─db28dbd2-db12-11ea-28e4-2b6cf30bd102
 # ╟─02bfa078-d62b-11ea-15df-d701431829b9
