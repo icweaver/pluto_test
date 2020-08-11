@@ -18,6 +18,9 @@ md"### Literature values"
 # ╔═╡ 75d6dcbe-db0a-11ea-2839-9542a238b679
 md"Source: [Exoplanet Archive](https://exoplanetarchive.ipac.caltech.edu/cgi-bin/DisplayOverview/nph-DisplayOverview?objname=HAT-P-23%20b)"
 
+# ╔═╡ 0a967d9e-dc07-11ea-0408-f7fd972b67b6
+md"Required inputs, Rₛ, P, μ, α..."
+
 # ╔═╡ 0b6821a4-dac3-11ea-27d7-911521f0d3c0
 md"### Calculate all the things"
 
@@ -29,9 +32,14 @@ begin
 end;
 
 # ╔═╡ 3f79c516-da77-11ea-1f6b-d3e7191a95d8
-begin
+begin	
+	# Semi-major axis / Star density
+	get_aRₛ(ρₛ::Unitful.Density, P::Unitful.Time) = ((G * P^2 * ρₛ)/(3.0π))^(1//3)
+	get_aRₛ(a::Unitful.Length, Rₛ::Unitful.Length) = a / Rₛ
+	
 	# Star density
-	get_ρₛ(; P, aRₛ) = (3.0π / (G * P^2)) * aRₛ^3.0
+	get_ρₛ(P::Unitful.Time, aRₛ::Measurement) = (3.0π / (G * P^2)) * aRₛ^3
+	get_ρₛ(ρₛ::Unitful.Density, Rₛ::Unitful.Length) = ρₛ * (4.0/3.0)π * Rₛ^3
 
 	# Star mass
 	get_Mₛ(; ρₛ, Rₛ) = ρₛ * (4.0/3.0) * π * Rₛ^3.0
@@ -52,7 +60,9 @@ begin
 	get_H(; μ, Tₚ, gₚ) = k * Tₚ / (μ * gₚ)
 
 	# Estimated signal from planet atmosphere
-	get_Delta_D(; H, RₚRₛ, Rₛ) = 2.0 * H * RₚRₛ/Rₛ
+	get_ΔD(; H, RₚRₛ, Rₛ) = 2.0 * H * RₚRₛ/Rₛ
+	
+	get_ΔD_less_precise(; H, Rₚ, Rₛ) = 2.0 * H * Rₚ/Rₛ^2
 end;
 
 # ╔═╡ ffc88100-dbd4-11ea-2f71-39b10a4e5798
@@ -69,8 +79,9 @@ end;
 end;
 
 # ╔═╡ 33fc58d0-dbd9-11ea-3c45-83f4b5a2a818
-function print_results(d::Derived)
-	md"""**$(d.name):**
+function print_summaries(d::Derived)
+	md"""
+	**$(d.name):**
 
 	log gₛ (cm/s²) = $(log10(ustrip(uconvert(u"cm/s^2", d.gₛ))))
 
@@ -79,7 +90,7 @@ function print_results(d::Derived)
 	ρₛ = $(uconvert(u"g/cm^3", d.ρₛ))
 
 	Mₛ = $(uconvert(u"Msun", d.Mₛ))
-
+	
 	Mₚ = $(uconvert(u"Mjup", d.Mₚ))
 
 	Tₚ = $(uconvert(u"K", d.Tₚ))
@@ -96,15 +107,15 @@ end;
 	name::String = "Custom"
 	
 	# Orbital params
-	RₚRₛ::Union{Measurement, Quantity} = 0 ± 0 # Planet to star radius ratio
-	aRₛ::Union{Measurement, Quantity} = 0 ± 0  # Semi-major axis to star radius ratio
+	RₚRₛ::Union{Measurement, Nothing} = nothing # Planet to star radius ratio
+	aRₛ::Union{Measurement, Nothing} = nothing  # Semi-major axis to star radius ratio
 	P = nothing                                # Period
 	K = nothing                                # RV semi-amplitude
 	i = nothing                                # Inclination
 	
 	# Planet params
 	μ = nothing                                # Mean molecular weight
-	α::Union{Measurement, Quantity} = 0±0      # Albedo
+	α::Union{Measurement, Nothing} = nothing      # Albedo
 	Tₚ = nothing                               # Equilibrium temperature
 	ρₚ = nothing                               # Density
 	Mₚ = nothing                               # Mass
@@ -118,8 +129,23 @@ end;
 end;
 
 # ╔═╡ 17302d74-d63b-11ea-3de3-49f0df0554ca
-# Input params from studies to compare
+# Input params from studies to explore
 studies = [
+	Study(
+		name = "WASP-43/b: Weaver et al. (2020)",
+		μ    = 2.0*amu,
+		α    = 0.0 ± 0.0,
+		K    = (551.0 ± 3.2)u"m/s",
+		i    = (1.433 ± 0.1)u"rad",
+		P    = (0.813473978 ± 3.5e-8)u"d",
+		Tₛ   = (4520 ± 120)u"K",
+		Rₛ   = (0.667 ± 0.010)u"Rsun",
+		aRₛ  = 4.872 ± 0.14,
+		Mₛ   = (0.717 ± 0.025)u"Msun",
+		Tₚ   = (1440 ± 40)u"K",
+		Mₚ   = (2.052 ± 0.053)u"Mjup",
+		Rₚ   =  (1.036 ± 0.012)u"Rjup",
+	),
 	Study(
 		name = "Ciceri et al. (2015)",
 		μ    = 2.0*amu,
@@ -161,22 +187,40 @@ studies = [
 
 # ╔═╡ 3833772c-d63f-11ea-09b5-f36d68e512ea
 begin
-	results = []
+	summaries = []
 	for st in studies
-		# Calculate primary params if not given
-		ρₛ = (isnothing(st.ρₛ)) ? get_ρₛ(P=st.P, aRₛ=st.aRₛ) : st.ρₛ
-		Mₛ = (isnothing(st.Mₛ)) ? get_Mₛ(ρₛ=ρₛ, Rₛ=st.Rₛ) : st.Mₛ
-		Mₚ = (isnothing(st.Mₚ)) ? get_Mₚ(K=st.K, i=st.i, P=st.P, Mₛ=Mₛ) : st.Mₚ
+		# Required inputs
+		Rₛ = st.Rₛ
+		P  = st.P
+		
+		# adasdasd
+		RₚRₛ = all((!isnothing).([st.Rₚ, st.Rₛ])) ? st.Rₚ / st.Rₛ : st.RₚRₛ	
+		 
+		if !isnothing(st.aRₛ)
+			aRₛ = st.aRₛ
+			ρₛ = get_ρₛ(P, aRₛ)
+		elseif !isnothing(st.a)
+			a = st.a
+			aRₛ = get_aRₛ(a, Rₛ)
+		elseif !isnothing(st.ρₛ)
+			ρₛ = st.ρₛ
+			aRₛ = get_aRₛ(ρₛ, P)
+		else
+			error("Params not defined for ρₛ, P, a!")
+		end
 		
 		# Calculate remaining params
-		gₛ = get_gₛ(Mₛ=Mₛ, Rₛ=st.Rₛ)
-		gₚ = get_gₚ(Mₚ=Mₚ, RₚRₛ=st.RₚRₛ, Rₛ=st.Rₛ)
-		Tₚ = get_Tₚ(Tₛ=st.Tₛ, aRₛ=st.aRₛ, α=st.α)
-		H  = get_H(μ=st.μ, Tₚ=Tₚ, gₚ=gₚ)
-		ΔD = get_Delta_D(H=H, RₚRₛ=st.RₚRₛ, Rₛ=st.Rₛ)
+		Mₛ =  (isnothing(st.Mₛ)) ? get_Mₛ(ρₛ=ρₛ, Rₛ=Rₛ) : st.Mₛ
+		Mₚ =  (isnothing(st.Mₚ)) ? get_Mₚ(K=st.K, i=st.i, P=P, Mₛ=Mₛ) : st.Mₚ
+		Tₚ =  (isnothing(st.Tₚ)) ? get_Tₚ(Tₛ=st.Tₛ, aRₛ=aRₛ, α=st.α) : st.Tₚ
 		
-		# Store results
-		derived = Derived(
+		gₛ = get_gₛ(Mₛ=Mₛ, Rₛ=Rₛ)
+		gₚ = get_gₚ(Mₚ=Mₚ, RₚRₛ=RₚRₛ, Rₛ=Rₛ)
+		H  = get_H(μ=st.μ, Tₚ=Tₚ, gₚ=gₚ)
+		ΔD = get_ΔD(H=H, RₚRₛ=RₚRₛ, Rₛ=Rₛ)
+		
+		# Store summary
+		summary = Derived(
 			name = st.name,
 			gₛ = gₛ,
 			gₚ = gₚ,
@@ -187,24 +231,25 @@ begin
 			H  = H,
 			ΔD = ΔD,
 		)
-		push!(results, derived)
+		push!(summaries, summary)
 	end
-end
+end;
 
 # ╔═╡ 4bfaf322-dbd9-11ea-0449-87d9aa07311f
-print_results.(results)
+print_summaries.(summaries)
 
 # ╔═╡ Cell order:
 # ╟─c9ac27ee-dac0-11ea-2a8c-2d144b034a82
 # ╟─b2286b26-dac2-11ea-1ce0-c7da562aa641
 # ╟─19b35ef4-dac3-11ea-2d25-97e5482ff6a0
 # ╟─75d6dcbe-db0a-11ea-2839-9542a238b679
+# ╠═0a967d9e-dc07-11ea-0408-f7fd972b67b6
 # ╠═17302d74-d63b-11ea-3de3-49f0df0554ca
 # ╟─0b6821a4-dac3-11ea-27d7-911521f0d3c0
-# ╟─4bfaf322-dbd9-11ea-0449-87d9aa07311f
+# ╠═4bfaf322-dbd9-11ea-0449-87d9aa07311f
 # ╠═3833772c-d63f-11ea-09b5-f36d68e512ea
-# ╟─3f79c516-da77-11ea-1f6b-d3e7191a95d8
-# ╟─33fc58d0-dbd9-11ea-3c45-83f4b5a2a818
-# ╟─ffc88100-dbd4-11ea-2f71-39b10a4e5798
-# ╟─db28dbd2-db12-11ea-28e4-2b6cf30bd102
-# ╟─02bfa078-d62b-11ea-15df-d701431829b9
+# ╠═33fc58d0-dbd9-11ea-3c45-83f4b5a2a818
+# ╠═3f79c516-da77-11ea-1f6b-d3e7191a95d8
+# ╠═ffc88100-dbd4-11ea-2f71-39b10a4e5798
+# ╠═db28dbd2-db12-11ea-28e4-2b6cf30bd102
+# ╠═02bfa078-d62b-11ea-15df-d701431829b9
