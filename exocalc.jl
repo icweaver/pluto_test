@@ -40,6 +40,7 @@ begin
 	# Star density
 	get_ρₛ(P::Unitful.Time, aRₛ::Measurement) = (3.0π / (G * P^2)) * aRₛ^3
 	get_ρₛ(ρₛ::Unitful.Density, Rₛ::Unitful.Length) = ρₛ * (4.0/3.0)π * Rₛ^3
+	get_ρₛ(Mₛ::Unitful.Mass, Rₛ::Unitful.Length) = Mₛ / ((4.0/3.0)π * Rₛ^3)
 
 	# Star mass
 	get_Mₛ(; ρₛ, Rₛ) = ρₛ * (4.0/3.0) * π * Rₛ^3.0
@@ -61,43 +62,67 @@ begin
 
 	# Estimated signal from planet atmosphere
 	get_ΔD(; H, RₚRₛ, Rₛ) = 2.0 * H * RₚRₛ/Rₛ
-	
-	get_ΔD_less_precise(; H, Rₚ, Rₛ) = 2.0 * H * Rₚ/Rₛ^2
 end;
 
 # ╔═╡ ffc88100-dbd4-11ea-2f71-39b10a4e5798
 @with_kw_noshow struct Derived @deftype Union{Nothing, Quantity}
 	name::String = "Custom"
-	gₛ = nothing
-	gₚ = nothing
-	ρₛ = nothing
-	Mₛ = nothing
-	Mₚ = nothing
-	Tₚ = nothing
-	H  = nothing
-	ΔD = nothing
+	#Orbital params
+	RₚRₛ::Union{Measurement, Nothing} = nothing
+	P   = nothing
+	aRₛ::Union{Measurement, Nothing} = nothing
+	K   = nothing
+	i   = nothing
+	
+	# Planet params
+	μ   = nothing
+	α::Union{Measurement, Nothing} = nothing
+	gₚ  = nothing
+	Mₚ  = nothing
+	Rₚ  = nothing
+	Tₚ  = nothing
+	H   = nothing	
+	
+	# Star Params
+	ρₛ  = nothing
+	gₛ  = nothing
+	Mₛ  = nothing
+	Rₛ  = nothing
+	Tₛ  = nothing
+	
+	# Signal
+	ΔD  = nothing
 end;
 
 # ╔═╡ 33fc58d0-dbd9-11ea-3c45-83f4b5a2a818
 function print_summaries(d::Derived)
 	md"""
-	**$(d.name):**
-
-	log gₛ (cm/s²) = $(log10(ustrip(uconvert(u"cm/s^2", d.gₛ))))
-
-	log gₚ (cm/s²) = $(log10(ustrip(uconvert(u"cm/s^2", d.gₚ))))
-
-	ρₛ = $(uconvert(u"g/cm^3", d.ρₛ))
-
-	Mₛ = $(uconvert(u"Msun", d.Mₛ))
+	###### **$(d.name):**
+	**Orbital params** \
+	RₚRₛ = $(uconvert(NoUnits, d.RₚRₛ)) \
+	P   = $(uconvert(u"d", d.P)) \
+	aRₛ = $(uconvert(NoUnits, d.aRₛ)) \
+	K   = $(uconvert(u"m/s", d.K)) \
+	i   = $(uconvert(u"°", d.i)) 
 	
-	Mₚ = $(uconvert(u"Mjup", d.Mₚ))
+	**Planet params** \
+	μ   = $(uconvert(u"u", d.μ)) \
+	α   = $(uconvert(NoUnits, d.α)) \
+	log gₚ (cm/s²) = $(log10(ustrip(uconvert(u"cm/s^2", d.gₚ)))) \
+	Mₚ  = $(uconvert(u"Mjup", d.Mₚ)) \
+	Rₚ  = $(uconvert(u"Rearth", d.Rₚ)) \
+	Tₚ  = $(uconvert(u"K", d.Tₚ)) \
+	H   = $(uconvert(u"km", d.H))
 
-	Tₚ = $(uconvert(u"K", d.Tₚ))
+	**Star Params** \
+	ρₛ  = $(uconvert(u"g/cm^3", d.ρₛ)) \
+	gₛ  = log gₛ (cm/s²) = $(log10(ustrip(uconvert(u"cm/s^2", d.gₛ)))) \
+	Mₛ  = $(uconvert(u"Msun", d.Mₛ)) \
+	Rₛ  = $(uconvert(u"Rsun", d.Rₛ)) \
+	Tₛ  = $(uconvert(u"K", d.Tₛ))
 
-	H = $(uconvert(u"km", d.H))
-
-	ΔD = $(5 * upreferred(d.ΔD) * 1e6) ppm
+	**Signal** \
+	ΔD  = $(5 * uconvert(NoUnits, d.ΔD) * 1e6) ppm
 	"""
 end;
 
@@ -109,6 +134,7 @@ end;
 	# Orbital params
 	RₚRₛ::Union{Measurement, Nothing} = nothing # Planet to star radius ratio
 	aRₛ::Union{Measurement, Nothing} = nothing  # Semi-major axis to star radius ratio
+	a::Union{Measurement, Nothing} = nothing  # Semi-major axis
 	P = nothing                                # Period
 	K = nothing                                # RV semi-amplitude
 	i = nothing                                # Inclination
@@ -159,29 +185,16 @@ studies = [
 		Rₛ   = (1.089 ± 0.028)u"Rsun",
 	),
 	Study(
-		name = "GAIA DR2",
+		name = "Stassun et al. (2017, GAIA DR1)",
 		μ    = 2.0*amu,
 		α    = 0.0 ± 0.0,
 		K    = (346.0 ± 21)u"m/s", # latest RV data, from B17
 		i    = (85.1 ± 1.5)u"°",  # latest RV data, from B17
-		P    = (1.2128867 ± 0.0000002)u"d", # latest transit data: (S&R16)
+		P    = (1.212880 ± 0.000002)u"d", # latest transit data: (S&R16)
 		RₚRₛ = 0.1113 ± 0.0010, # latest transit data: (S&R16)
-		aRₛ  = 4.16 ± 0.26,
-		Tₛ   = (5734 ± 99.8735)u"K",
-		Rₛ   = (1.1858169 ± 0.0424133)u"Rsun",
-	),
-	Study(
-		name = "GAIA DR2 w/ DR1 mass",
-		μ    = 2.0*amu,
-		α    = 0.0 ± 0.0,
-		K    = (346.0 ± 21)u"m/s", # latest RV data, from B17
-		i    = (85.1 ± 1.5)u"°",  # latest RV data, from B17
-		P    = (1.2128867 ± 0.0000002)u"d", # latest transit data: (S&R16)
-		Mₚ   = (1.34 ± 0.59)u"Mjup",
-		RₚRₛ = 0.1113 ± 0.0010, # latest transit data: (S&R16)
-		aRₛ  = 4.16 ± 0.26,
-		Tₛ   = (5734 ± 99.8735)u"K",
-		Rₛ   = (1.1858169 ± 0.0424133)u"Rsun",
+		Tₛ   = (5905 ± 80)u"K",
+		ρₛ   = (0.92 ± 0.18)u"g/cm^3",
+		Rₛ   = (0.960±0.200	)u"Rsun",
 	),
 ];
 
@@ -194,7 +207,13 @@ begin
 		P  = st.P
 		
 		# adasdasd
-		RₚRₛ = all((!isnothing).([st.Rₚ, st.Rₛ])) ? st.Rₚ / st.Rₛ : st.RₚRₛ	
+		if all((!isnothing).([st.Rₚ, st.Rₛ]))
+			RₚRₛ = st.Rₚ / st.Rₛ
+			Rₚ = st.Rₚ
+		else 
+			RₚRₛ = st.RₚRₛ	
+			Rₚ = RₚRₛ * st.Rₛ
+		end
 		 
 		if !isnothing(st.aRₛ)
 			aRₛ = st.aRₛ
@@ -202,8 +221,13 @@ begin
 		elseif !isnothing(st.a)
 			a = st.a
 			aRₛ = get_aRₛ(a, Rₛ)
+			ρₛ = get_ρₛ(P, aRₛ)
 		elseif !isnothing(st.ρₛ)
 			ρₛ = st.ρₛ
+			aRₛ = get_aRₛ(ρₛ, P)
+		elseif !isnothing(st.Mₛ)
+			Mₛ = st.Mₛ
+			ρₛ = get_ρₛ(Mₛ, Rₛ)
 			aRₛ = get_aRₛ(ρₛ, P)
 		else
 			error("Params not defined for ρₛ, P, a!")
@@ -222,14 +246,32 @@ begin
 		# Store summary
 		summary = Derived(
 			name = st.name,
-			gₛ = gₛ,
-			gₚ = gₚ,
-			ρₛ = ρₛ,
-			Mₛ = Mₛ,
-			Mₚ = Mₚ,
-			Tₚ = Tₚ,
-			H  = H,
-			ΔD = ΔD,
+			
+			#Orbital params
+			RₚRₛ = RₚRₛ,
+			P   = P,
+			aRₛ = aRₛ,
+			K   = st.K,
+			i   = st.i,
+
+			# Planet params
+			μ   = st.μ,
+			α   = st.α,
+			gₚ  = gₚ,
+			Mₚ  = Mₚ,
+			Rₚ  = Rₚ,
+			Tₚ  = Tₚ,
+			H   = H,
+
+			# Star Params
+			ρₛ  = ρₛ,
+			gₛ  = gₛ,
+			Mₛ  = Mₛ,
+			Rₛ  = Rₛ,
+			Tₛ  = st.Tₛ,
+
+			# Signal
+			ΔD  = ΔD,
 		)
 		push!(summaries, summary)
 	end
